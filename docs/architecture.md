@@ -61,6 +61,50 @@ user's token does *not* automatically propagate past it.
 | `Gateway` | Entra **custom JWT authorizer** | Validates `aud` + `allowedScopes:[mcp.invoke]` — the coarse "may use the gateway" gate. |
 | `Gateway → MCP` | SigV4 (gateway role) | Machine-to-machine; the Gateway signs with its IAM role to invoke each MCP-server runtime. |
 
+### Variant · Lambda authorizer (code-based inbound auth)
+
+The two JWT edges above use AgentCore's **built-in `customJWTAuthorizer`** — pure config: give it the
+OIDC `discoveryUrl` + `allowedAudience` + `allowedScopes`, and AWS validates the token (signature,
+`iss`, `aud`, `exp`, `scp`) with no code running. A **Lambda authorizer** is the alternative where AWS
+invokes *your* function to make the allow/deny decision — reach for it only when the declarative
+validator can't express the check you need.
+
+Because AgentCore Runtime/Gateway inbound auth is **IAM or customJWT only** (no Lambda hook on
+AgentCore itself), the Lambda-authorizer variant means fronting the entry point with an **API Gateway**
+that delegates auth to a Lambda:
+
+```mermaid
+flowchart LR
+  FE["Front-end / Shim<br/>Bearer token"]
+  APIGW["API Gateway<br/>(HTTP or REST API)"]
+  LA["Lambda authorizer<br/>your code → allow/deny + context"]
+  BK["Agent on Runtime<br/>(or Gateway)"]
+  FE -->|"Bearer T"| APIGW
+  APIGW -. "1· invoke, pass token" .-> LA
+  LA -. "2· policy + context (claims, tenant, entitlements)" .-> APIGW
+  APIGW -->|"3· forward if allowed"| BK
+  classDef a fill:#ecedfb,stroke:#5b63e0,color:#26306e;
+  classDef b fill:#fde7d7,stroke:#d9822b,color:#5c3310;
+  class APIGW,LA a; class BK b;
+```
+
+| | Built-in `customJWTAuthorizer` (this repo) | Lambda authorizer (variant) |
+|---|---|---|
+| Runs code? | No — declarative config | Yes — your function per request |
+| Validates a JWT | ✅ signature/`iss`/`aud`/`exp`/`scp` | ✅ (you call a JWT lib) |
+| Opaque tokens / introspection | ❌ | ✅ call the IdP `/introspect` |
+| Revocation / deny-list lookup | ❌ (stateless until `exp`) | ✅ check a DB/cache per call |
+| Edge RBAC on `roles` | ❌ coarse `aud`+`scp` only | ✅ reject before the agent runs |
+| API keys / HMAC / mTLS mapping | ❌ | ✅ |
+| Returns context downstream | limited | ✅ principal, tenant, entitlements |
+| Result caching | n/a | TTL cache keyed by token/identity |
+
+**When it earns its place:** opaque (non-JWT) tokens needing introspection; revocation/deny-lists (JWTs
+are valid until `exp`); pushing the fine-grained `roles` check to the edge instead of inside the agent
+(`gateway_agent.py::_rbac`); or non-OAuth formats (API keys, HMAC, mTLS→identity). For the plain "is
+this a valid, in-scope Entra JWT?" question, the built-in authorizer already covers it — which is why
+this repo doesn't use a Lambda authorizer.
+
 ---
 
 ## 04 · Token flow (sequence)
