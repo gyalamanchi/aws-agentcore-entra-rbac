@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Entra → AgentCore token explorer</title>
+<script src="./msal-browser.min.js"></script>
+<script src="./config.js"></script>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px; background:#0f1420; color:#dfe6f2; }
+  h1 { font-size: 18px; } h2 { font-size: 14px; margin: 0 0 6px; color:#8fb7ff; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid #3a4a66; background:#1b2740; color:#dfe6f2; cursor:pointer; }
+  button:hover { background:#243352; } input { font: inherit; padding:8px; border-radius:8px; border:1px solid #3a4a66; background:#0b1120; color:#dfe6f2; width:360px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+  .panels { display:grid; grid-template-columns: repeat(auto-fit,minmax(360px,1fr)); gap:14px; }
+  .panel { background:#141c2e; border:1px solid #26334d; border-radius:10px; padding:12px; overflow:auto; }
+  pre { white-space:pre-wrap; word-break:break-all; margin:0; font: 12px/1.45 ui-monospace, monospace; }
+  .kv b { color:#ffd479; } .muted { color:#7f8ca6; } .ok { color:#7ee787; } .bad { color:#ff7b72; }
+  code { color:#79c0ff; }
+  /* collapsible JSON tree (Panel ②) */
+  #resp { font: 12px/1.5 ui-monospace, monospace; }
+  .jrow { padding:1px 0; word-break:break-all; }
+  .jdet { margin:1px 0; }
+  .jdet > summary { cursor:pointer; list-style:none; user-select:none; }
+  .jdet > summary::-webkit-details-marker { display:none; }
+  .jdet > summary::before { content:"▸"; display:inline-block; width:1.1em; color:#7f8ca6; }
+  .jdet[open] > summary::before { content:"▾"; }
+  .jdet > summary:hover { background:#1b2740; border-radius:4px; }
+  .jchildren { padding-left:14px; margin-left:3px; border-left:1px solid #26334d; }
+  .jkey { color:#8fb7ff; } .jstr { color:#7ee787; } .jnum { color:#ffd479; }
+  .jbool { color:#ff9bd0; } .jnull,.jmeta { color:#7f8ca6; }
+  .jtrunc { cursor:pointer; text-decoration:underline dotted #4a5a7a; text-underline-offset:3px; }
+  h2 .tools { float:right; font-weight:normal; }
+  h2 .tools button { font-size:11px; padding:2px 8px; margin-left:4px; }
+</style>
+</head>
+<body>
+<h1>Entra ID → DataPower shim → AgentCore agent → Gateway → MCP</h1>
+<div class="row">
+  <button id="signin">Sign in with Microsoft</button>
+  <button id="signout">Sign out</button>
+  <span id="who" class="muted">not signed in</span>
+</div>
+<div class="row">
+  <input id="prompt" value="roll two dice, give me a fun fact, and the weather in denver" />
+  <button id="call" disabled>Call the agent</button>
+  <span class="muted">shim mode is controlled server-side (MODE=exchange by default)</span>
+</div>
+<div class="panels">
+  <div class="panel"><h2>① T1 — token from Entra (this browser)</h2><pre id="t1">sign in to see it</pre></div>
+  <div class="panel"><h2>② Shim response — T2 + agent answer
+    <span class="tools"><button id="expand" type="button">expand all</button><button id="collapse" type="button">collapse all</button></span></h2>
+    <div id="resp">call the agent to see it</div></div>
+</div>
+
+<script>
+const cfg = window.APP_CONFIG;
+const pca = new msal.PublicClientApplication({
+  auth: { clientId: cfg.spaClientId, authority: `https://login.microsoftonline.com/${cfg.tenantId}`, redirectUri: window.location.origin },
+  cache: { cacheLocation: "sessionStorage" },
+});
+
+function decode(jwt) {
+  try { const p = jwt.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+        return JSON.parse(decodeURIComponent(escape(atob(p + "=".repeat((4-p.length%4)%4))))); }
+  catch { return null; }
+}
+function showToken(el, jwt) {
+  const c = decode(jwt);
+  el.innerHTML = c ? `<div class="kv">` +
+    `<b>aud</b>: ${c.aud}\n<b>iss</b>: ${c.iss}\n<b>appid/azp</b>: ${c.appid||c.azp||""}\n` +
+    `<b class="ok">scp</b> (delegated scopes): ${c.scp||"(none)"}\n` +
+    `<b class="ok">roles</b> (app roles): ${JSON.stringify(c.roles||"(none)")}\n` +
+    `<b>name</b>: ${c.name||c.preferred_username||""}\n<b>exp</b>: ${new Date(c.exp*1000).toISOString()}\n\n` +
+    `<span class="muted">Authorization: Bearer ${jwt.slice(0,32)}…(${jwt.length} chars)</span></div>`
+    : `<span class="bad">not a JWT</span>\n${jwt}`;
+}
+
+let account = null;
+async function getToken() {
+  const req = { scopes: [cfg.apiScope], account };
+  try { return (await pca.acquireTokenSilent(req)).accessToken; }
+  catch { return (await pca.acquireTokenPopup(req)).accessToken; }
+}
+
+document.getElementById("signin").onclick = async () => {
+  const r = await pca.loginPopup({ scopes: [cfg.apiScope] });
+  account = r.account; pca.setActiveAccount(account);
+  document.getElementById("who").textContent = account.username;
+  document.getElementById("call").disabled = false;
+  showToken(document.getElementById("t1"), await getToken());
+};
+
+document.getElementById("signout").onclick = () => {
+  // Clear MSAL cache so the next sign-in mints a FRESH token (picks up Entra role changes).
+  sessionStorage.clear();
+  location.reload();
+};
+
+document.getElementById("call").onclick = async () => {
+  const respEl = document.getElementById("resp");
+  respEl.textContent = "calling…";
+  const token = await getToken();
+  showToken(document.getElementById("t1"), token);
+  try {
+    const r = await fetch(cfg.shimUrl, { method:"POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: document.getElementById("prompt").value }) });
+    const j = await r.json();
+    renderJson(respEl, j);
+  } catch (e) { respEl.innerHTML = `<span class="bad">shim call failed: ${e}</span>\n(is datapower/shim.py running on :8080?)`; }
+};
+
+// ---- collapsible JSON tree ----
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+const FULL_KEYS = new Set(["result","message","text","error_description","prompt","reason"]);
+function leafHtml(v, key){
+  if (v === null) return '<span class="jnull">null</span>';
+  if (typeof v === "number") return `<span class="jnum">${v}</span>`;
+  if (typeof v === "boolean") return `<span class="jbool">${v}</span>`;
+  const s = String(v);
+  if (s.length > 180 && !FULL_KEYS.has(String(key)))
+    return `<span class="jstr jtrunc" data-full="${esc(s)}" data-short="${esc(s.slice(0,177))}" ` +
+           `title="click to show / hide full value">"${esc(s.slice(0,177))}…"</span>`;
+  return `<span class="jstr">"${esc(s)}"</span>`;
+}
+function jsonEl(key, val){
+  if (!val || typeof val !== "object"){
+    const row = document.createElement("div"); row.className = "jrow";
+    row.innerHTML = (key !== null ? `<span class="jkey">${esc(key)}</span>: ` : "") + leafHtml(val, key);
+    return row;
+  }
+  const arr = Array.isArray(val);
+  const entries = arr ? val.map((v,i)=>[i,v]) : Object.entries(val);
+  const det = document.createElement("details"); det.className = "jdet";
+  const sum = document.createElement("summary");
+  sum.innerHTML = `<span class="jkey">${key !== null ? esc(key) : "response"}</span> ` +
+    `<span class="jmeta">${arr ? `[${entries.length}]` : `{${entries.length}}`}</span>`;
+  det.appendChild(sum);
+  const body = document.createElement("div"); body.className = "jchildren";
+  for (const [k,v] of entries) body.appendChild(jsonEl(k, v));
+  det.appendChild(body);
+  return det;
+}
+function renderJson(container, obj){
+  container.innerHTML = "";
+  for (const [k,v] of Object.entries(obj)) container.appendChild(jsonEl(k, v));
+}
+const setAll = open => document.querySelectorAll("#resp details").forEach(d => d.open = open);
+document.getElementById("expand").onclick   = () => setAll(true);
+document.getElementById("collapse").onclick = () => setAll(false);
+// click a long string (e.g. result, or a token) to toggle full <-> truncated
+document.getElementById("resp").addEventListener("click", e => {
+  const t = e.target.closest(".jtrunc"); if (!t) return;
+  const expanded = t.dataset.expanded === "1";
+  t.dataset.expanded = expanded ? "0" : "1";
+  t.textContent = expanded ? `"${t.dataset.short}…"` : `"${t.dataset.full}"`;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored) and fill in after the toolkit deploy.
+region             = "us-east-1"
+execution_role_arn = "arn:aws:iam::21730xxxxxxx:role/AgentCoreTrainingExecRole"
+# The toolkit pushes TIMESTAMPED tags (no :latest). Get the current one from `agentcore status`
+# or: aws ecr describe-images --repository-name bedrock-agentcore-agentcore_agent \
+#       --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageTags'
+container_uri      = "21730xxxxxxx.dkr.ecr.us-east-1.amazonaws.com/bedrock-agentcore-agentcore_agent:20260709-005953-701"
+agent_runtime_name = "catalog_agent_tf"
