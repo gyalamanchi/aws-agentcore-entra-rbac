@@ -111,6 +111,13 @@ flowchart LR
 The shim's `MODE=exchange` is a stand-in for the enterprise DataPower box: it trades the inbound user
 token for a fresh, downstream-scoped token, signed by the confidential middle-tier app.
 
+Concretely, the shim POSTs T1 to Entra's token endpoint
+`https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token` with
+`grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`, `assertion=<T1>`, `scope=<GUID>/mcp.invoke`,
+and `requested_token_use=on_behalf_of`, authenticating with the app's **client secret** — Entra returns
+T2 in the response. (Real DataPower makes the equivalent call; the client secret is why this step lives
+in the confidential middle tier and not the browser.)
+
 | | **T1 · from sign-in** (public client) | **T2 · exchanged** (confidential) |
 |---|---|---|
 | `aud` | `api://c1a0c3f8-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | `c1a0c3f8-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (not `api://`) |
