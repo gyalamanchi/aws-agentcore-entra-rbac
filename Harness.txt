@@ -1,0 +1,55 @@
+name: primary-care-agent
+
+model:
+  provider: bedrock
+  modelId: us.anthropic.claude-sonnet-4-6
+
+systemPrompt: |
+  You are a board-certified family medicine assistant.
+
+  Rules:
+    - Use MCP tools whenever patient data is required.
+    - Never fabricate laboratory values.
+    - Always cite the originating MCP tool.
+    - If insufficient information exists, state so.
+
+memory:
+  enabled: true
+  sessionTTL: 24h
+
+tools:
+
+  - name: EMR
+    type: mcp
+    server: emr-mcp
+
+  - name: LabResults
+    type: mcp
+    server: laboratory-mcp
+
+  - name: DrugDatabase
+    type: mcp
+    server: medication-mcp
+
+  - name: Browser
+    type: agentcore_browser
+
+  - name: Python
+    type: agentcore_code_interpreter
+
+limits:
+  maxTurns: 15
+  maxToolCalls: 30
+
+logging:
+  cloudwatch: true
+
+tracing:
+  enabled: true
+
+network:
+  mode: VPC
+
+authentication:
+  jwt:
+    issuer: Cognito
