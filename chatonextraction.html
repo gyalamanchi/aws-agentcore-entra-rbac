@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extracting Clause Structure from Legal Contracts</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f0f1f3;">
+
+<div style="max-width:720px; margin:0 auto; padding:32px 24px 56px; background-color:#ffffff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:16px; line-height:1.65; color:#1f2225;">
+
+  <!-- ── Header ───────────────────────────────────────────── -->
+  <div style="border-bottom:3px solid #1f4e79; padding-bottom:18px; margin-bottom:32px;">
+    <h1 style="margin:0 0 8px; font-size:26px; line-height:1.25; font-weight:700; color:#14304a;">
+      Extracting Clause Structure from Legal Contracts
+    </h1>
+    <p style="margin:0; font-size:15px; color:#5c6570;">
+      A recommended pipeline for turning 50-page PDF contracts into reliable,
+      hierarchy-aware structured data.
+    </p>
+  </div>
+
+  <!-- ── Summary box ──────────────────────────────────────── -->
+  <div style="background-color:#f4f8fc; border-left:4px solid #1f4e79; padding:16px 20px; margin:0 0 32px;">
+    <p style="margin:0 0 10px; font-size:13px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#1f4e79;">
+      The short version
+    </p>
+    <p style="margin:0;">
+      A 50-page legal contract is absolutely manageable &mdash; but not by
+      &ldquo;OCR the PDF and ask an AI to find the clauses.&rdquo; That approach produces exactly
+      the problems described. The reliable solution is a <strong>two-stage,
+      document-structure pipeline</strong> with a deterministic layer in the middle.
+    </p>
+  </div>
+
+  <!-- ── Pipeline ─────────────────────────────────────────── -->
+  <div style="background-color:#14304a; color:#e8eef4; padding:18px 20px; margin:0 0 32px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.7; text-align:center;">
+    PDF &nbsp;&rarr;&nbsp; layout-aware parsing &nbsp;&rarr;&nbsp; deterministic section reconstruction<br>
+    &rarr;&nbsp; LLM clause classification &nbsp;&rarr;&nbsp; validation
+  </div>
+
+  <!-- ══ PART 1 ═══════════════════════════════════════════ -->
+  <p style="margin:0 0 4px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#8a939d;">Part 1</p>
+  <h2 style="margin:0 0 20px; font-size:21px; font-weight:700; color:#14304a; border-bottom:1px solid #e2e5e9; padding-bottom:8px;">
+    The recommended approach
+  </h2>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    Clause numbering is a tree, not text
+  </h3>
+  <p style="margin:0 0 14px;">Something like this:</p>
+
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">Section 2. Indemnification
+(a) Seller shall&hellip;
+    (i)  &hellip;
+    (ii) &hellip;
+(b) Buyer shall&hellip;</pre>
+
+  <p style="margin:0 0 14px;">
+    &hellip;isn&rsquo;t merely text &mdash; it&rsquo;s a tree structure. The system needs to understand
+    that <strong>(i) belongs to 2(a)</strong>, not simply that (i) appears somewhere after Section 2.
+  </p>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    What I&rsquo;d use for the parsing layer
+  </h3>
+  <p style="margin:0 0 14px;">
+    First choice would be <strong>Azure Document Intelligence Layout</strong>,
+    <strong>Google Document AI Layout Parser</strong>, or <strong>AWS Textract Layout</strong>.
+  </p>
+  <ul style="margin:0 0 14px; padding-left:22px;">
+    <li style="margin-bottom:8px;">
+      <strong>Azure</strong> &mdash; explicitly extracts paragraphs, headings, sections, tables,
+      lines, and positional information. It can also emit structured Markdown, which is
+      particularly useful before handing the contract to an LLM.
+    </li>
+    <li style="margin-bottom:8px;">
+      <strong>Google Document AI Layout Parser</strong> &mdash; purpose-built to turn complex
+      documents into structured, machine-readable blocks/chunks while retaining layout.
+    </li>
+    <li style="margin-bottom:8px;">
+      <strong>AWS Textract</strong> &mdash; identifies titles, headers, paragraphs, lists,
+      section headers, page numbers, tables, and their bounding boxes.
+    </li>
+  </ul>
+  <p style="margin:0 0 14px;">
+    Given existing AWS development, Textract is reasonable &mdash; but benchmark it against Azure
+    Document Intelligence on <strong>10&ndash;20 representative contracts</strong> before committing.
+  </p>
+
+  <!-- ── Key point callout ────────────────────────────────── -->
+  <div style="background-color:#fdf6e8; border-left:4px solid #c8912a; padding:16px 20px; margin:28px 0;">
+    <p style="margin:0 0 8px; font-size:13px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#8a6414;">
+      The single biggest change
+    </p>
+    <p style="margin:0;">
+      <strong>Don&rsquo;t let the LLM determine the numbering.</strong> This is probably the most
+      important departure from the current approach.
+    </p>
+  </div>
+
+  <p style="margin:0 0 14px;">Suppose parsing gives you:</p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">SECTION 2. REPRESENTATIONS
+
+(a) Organization. The Company is&hellip;
+(b) Authorization. The Company has&hellip;
+    (i)  execution of this Agreement&hellip;
+    (ii) performance of its obligations&hellip;
+
+SECTION 3. COVENANTS</pre>
+
+  <p style="margin:0 0 14px;">
+    Don&rsquo;t simply prompt <em>&ldquo;extract all clauses and tell me their section numbers.&rdquo;</em>
+    Instead, write a small parser that recognizes numbering patterns:
+  </p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">ARTICLE IV     Section 4.2     (a)
+Article 4      4.2             (i)
+SECTION 4      4.2(a)          (A)
+                               (1)</pre>
+
+  <p style="margin:0 0 14px;">Then construct an internal tree:</p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">{
+  "article": "ARTICLE IV",
+  "sections": [
+    {
+      "number": "4.2",
+      "title": "Representations and Warranties",
+      "subsections": [
+        {
+          "number": "4.2(a)",
+          "title": "Organization",
+          "children": [
+            { "number": "4.2(a)(i)", "text": "&hellip;" }
+          ]
+        }
+      ]
+    }
+  ]
+}</pre>
+  <p style="margin:0 0 14px;">
+    That is far more reliable than asking an LLM to infer hierarchy across 50 pages at once.
+  </p>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    Then use the LLM for what LLMs are good at
+  </h3>
+  <p style="margin:0 0 14px;">
+    Once the structural tree exists, send individual sections (or small groups) to the model
+    and ask it to classify them:
+  </p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">{
+  "clause_id":       "4.2(a)",
+  "heading":         "Indemnification",
+  "clause_type":     "indemnification",
+  "text":            "&hellip;",
+  "page_start":      17,
+  "page_end":        18,
+  "parent_section":  "4.2",
+  "confidence":      &hellip;
+}</pre>
+
+  <p style="margin:0 0 10px;"><strong>A starting taxonomy:</strong></p>
+  <div style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-size:14px; line-height:2;">
+    <span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Indemnification</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Limitation of Liability</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Termination</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Confidentiality</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Governing Law</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Assignment</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Change of Control</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Force Majeure</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Insurance</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Representations &amp; Warranties</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Covenants</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Payment Terms</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Intellectual Property</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Non-compete</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Non-solicitation</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Dispute Resolution</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Arbitration</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Notice</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Definitions</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Renewal</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Audit Rights</span><span style="display:inline-block; background:#ffffff; border:1px solid #d8dde2; border-radius:3px; padding:2px 9px; margin:0 5px 5px 0;">Data Protection</span>
+  </div>
+  <p style="margin:0 0 14px;">
+    The model should <strong>classify existing sections</strong>, not rewrite the contract structure.
+  </p>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    Preserve coordinates and page numbers
+  </h3>
+  <p style="margin:0 0 14px;">
+    Never throw away the OCR metadata. Each extracted block should retain something like:
+  </p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">{
+  "page":            17,
+  "bounding_box":    [&hellip;],
+  "text":            "&hellip;",
+  "ocr_confidence":  0.997,
+  "block_type":      "paragraph"
+}</pre>
+  <p style="margin:0 0 14px;">
+    Textract returns location geometry and confidence for detected elements. That lets the
+    final application show:
+  </p>
+  <div style="margin:0 0 14px; padding:14px 18px; background-color:#ffffff; border:1px solid #d8dde2; border-radius:4px;">
+    <div style="font-weight:700; color:#14304a;">Indemnification &mdash; &sect;8.3(b)</div>
+    <div style="font-size:14px; color:#5c6570;">Pages 27&ndash;28</div>
+  </div>
+  <p style="margin:0 0 14px;">
+    &hellip;and when someone clicks it, display the exact source portion of the PDF. That
+    <strong>source traceability</strong> is especially important for a legal-document system.
+  </p>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    Don&rsquo;t OCR PDFs unnecessarily
+  </h3>
+  <p style="margin:0 0 14px;">
+    Before running OCR, check whether the PDF already has a text layer. Many contracts that
+    look like scans are actually digitally generated PDFs. In those cases:
+  </p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">PDF text extraction &rarr; layout reconstruction     &check; preferred
+PDF &rarr; image &rarr; OCR &rarr; text                       &times; introduces errors</pre>
+  <p style="margin:0 0 14px;">Only OCR scanned/image pages. You can mix modes per page:</p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">                        &#9484;&#9472; Native text &rarr; extract directly
+PDF &rarr; inspect each page &#9508;
+                        &#9492;&#9472; Image page  &rarr; OCR</pre>
+
+  <!-- ── Architecture ─────────────────────────────────────── -->
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    How I&rsquo;d architect the whole thing
+  </h3>
+  <pre style="margin:0 0 14px; padding:18px 16px; background-color:#14304a; color:#dce6f0; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; line-height:1.55; overflow-x:auto; white-space:pre;">                  50-page contract
+                         &#9474;
+                         &#9660;
+                PDF page analyzer
+                         &#9474;
+          &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+          &#9474;                             &#9474;
+     Native PDF                     Scanned page
+          &#9474;                             &#9474;
+    extract text                Layout-aware OCR
+          &#9474;                             &#9474;
+          &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+                         &#9660;
+                Layout representation
+          text + coordinates + pages
+                         &#9474;
+                         &#9660;
+                  SECTION PARSER
+                 deterministic rules
+                         &#9474;
+                         &#9660;
+                    Clause Tree
+
+              Article V
+                  &#9474;
+                  &#9500;&#9472;&#9472; 5.1
+                  &#9474;    &#9500;&#9472;&#9472; 5.1(a)
+                  &#9474;    &#9492;&#9472;&#9472; 5.1(b)
+                  &#9474;          &#9500;&#9472;&#9472; 5.1(b)(i)
+                  &#9474;          &#9492;&#9472;&#9472; 5.1(b)(ii)
+                  &#9492;&#9472;&#9472; 5.2
+                         &#9474;
+                         &#9660;
+                   LLM classifier
+                         &#9474;
+                         &#9660;
+          "5.1(b) = Indemnification"
+                         &#9474;
+                         &#9660;
+                Validation engine
+                  &#9500;&#9472; numbering
+                  &#9500;&#9472; missing sections
+                  &#9500;&#9472; duplicated sections
+                  &#9500;&#9472; OCR confidence
+                  &#9492;&#9472; source citation
+                         &#9474;
+                         &#9660;
+                  Structured JSON</pre>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    The validation layer
+  </h3>
+  <p style="margin:0 0 14px;">
+    This is what takes the system close to production/legal-review quality. If the parser sees
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">2(a)</code>,
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">2(b)</code>,
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">2(d)</code>
+    it should flag <strong>&ldquo;Possible missing subsection: 2(c)&rdquo;</strong> instead of silently
+    proceeding. Likewise
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">3.1, 3.2, 3.2, 3.4</code>
+    should generate a duplicate/missing-number warning.
+  </p>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    Why the current approach has been struggling
+  </h3>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; margin:0 0 14px; font-size:14.5px;">
+    <tr>
+      <td style="width:90px; padding:10px 12px; background-color:#fdf0ef; border:1px solid #e8d5d3; font-weight:700; color:#a03028; vertical-align:top;">Currently</td>
+      <td style="padding:10px 12px; background-color:#fdf6f5; border:1px solid #e8d5d3; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">OCR &rarr; LLM &rarr; clause JSON</td>
+    </tr>
+    <tr>
+      <td style="width:90px; padding:10px 12px; background-color:#eef7ee; border:1px solid #cfe3cf; font-weight:700; color:#2b6a2f; vertical-align:top;">Instead</td>
+      <td style="padding:10px 12px; background-color:#f6fbf6; border:1px solid #cfe3cf; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">Layout extraction &rarr; hierarchy parser &rarr; LLM &rarr; validator</td>
+    </tr>
+  </table>
+  <p style="margin:0 0 14px;">
+    The <strong>deterministic middle layer</strong> makes an enormous difference. And don&rsquo;t
+    process all 50 pages as one giant LLM request &mdash; the document hierarchy gives you natural
+    chunk boundaries. (Azure itself uses layout-aware semantic chunking based on paragraphs and
+    tables for retrieval scenarios.)
+  </p>
+
+  <h3 style="margin:28px 0 10px; font-size:17px; font-weight:700; color:#1f2225;">
+    Suggested stack
+  </h3>
+  <ul style="margin:0 0 14px; padding-left:22px;">
+    <li style="margin-bottom:6px;">Python or TypeScript</li>
+    <li style="margin-bottom:6px;">Azure Document Intelligence <em>or</em> AWS Textract</li>
+    <li style="margin-bottom:6px;">A regex / state-machine section parser</li>
+    <li style="margin-bottom:6px;">LLM structured-JSON extraction</li>
+    <li style="margin-bottom:6px;">PostgreSQL JSONB</li>
+  </ul>
+  <p style="margin:0 0 14px;">With a data model roughly:</p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">document &rarr; page &rarr; article &rarr; section &rarr; subsection &rarr; clause</pre>
+  <p style="margin:0 0 14px;">
+    &hellip;retaining <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">page_number</code>,
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">bounding_box</code>,
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">raw_text</code>,
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">normalized_text</code>, and
+    <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">parent_id</code>
+    at every level.
+  </p>
+  <p style="margin:0 0 14px;">
+    The state-machine/section parser is probably only a few hundred lines of carefully written
+    code &mdash; and <strong>that component, rather than a more powerful OCR model or a bigger LLM,
+    is likely what solves the &ldquo;Paragraph 2 Section (a)&rdquo; problem.</strong>
+  </p>
+
+  <!-- ══ PART 2 ═══════════════════════════════════════════ -->
+  <p style="margin:40px 0 4px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#8a939d;">Part 2 &mdash; Follow-up question</p>
+  <h2 style="margin:0 0 20px; font-size:21px; font-weight:700; color:#14304a; border-bottom:1px solid #e2e5e9; padding-bottom:8px;">
+    Amazon Textract or Docling for OCR and layout extraction?
+  </h2>
+
+  <p style="margin:0 0 14px;">
+    Between the two, I&rsquo;d usually choose <strong>Textract for production OCR/layout
+    extraction</strong> and <strong>Docling for post-processing / structure normalization</strong>
+    &mdash; rather than treating them as direct substitutes.
+  </p>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; margin:0 0 14px; font-size:14.5px;">
+    <tr>
+      <td style="padding:12px 14px; background-color:#f5f6f8; border:1px solid #e2e5e9; vertical-align:top; width:50%;">
+        <strong style="color:#14304a;">Amazon Textract</strong><br>
+        Stronger as the OCR engine for scanned legal contracts. Returns words, lines, tables,
+        forms, geometry/bounding boxes, and layout elements with confidence scores.
+      </td>
+      <td style="padding:12px 14px; background-color:#f5f6f8; border:1px solid #e2e5e9; vertical-align:top; width:50%;">
+        <strong style="color:#14304a;">Docling</strong><br>
+        Very useful for turning PDFs into a cleaner structured representation &mdash; headings,
+        paragraphs, tables, reading order, Markdown/JSON. Its OCR path depends on the backend you
+        configure, so it&rsquo;s not what I&rsquo;d trust most for difficult scans.
+      </td>
+    </tr>
+  </table>
+
+  <p style="margin:0 0 14px;">
+    For preserving <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">Section 2 &rarr; (a) &rarr; (i) &rarr; (A)</code>, I&rsquo;d use:
+  </p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">Textract &rarr; Docling/custom normalization
+         &rarr; deterministic hierarchy parser &rarr; LLM clause classifier</pre>
+
+  <p style="margin:0 0 14px;">
+    If the PDFs are mostly <strong>born-digital</strong> rather than scanned, test Docling first
+    &mdash; avoiding OCR when a reliable text layer exists is preferable. For mixed or scanned
+    PDFs, Textract becomes much more attractive.
+  </p>
+  <p style="margin:0 0 14px;">
+    The key point: <strong>neither tool alone will perfectly reconstruct legal numbering
+    hierarchy.</strong> I&rsquo;d still build a state machine around the extracted blocks, using
+    indentation, numbering patterns, font/layout cues, page coordinates, and reading order.
+    That&rsquo;s where reliable <code style="background:#f5f6f8; border:1px solid #e2e5e9; border-radius:3px; padding:1px 5px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px;">2(a)(iii)</code> labeling comes from.
+  </p>
+
+  <!-- ══ PART 3 ═══════════════════════════════════════════ -->
+  <p style="margin:40px 0 4px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#8a939d;">Part 3 &mdash; Follow-up question</p>
+  <h2 style="margin:0 0 20px; font-size:21px; font-weight:700; color:#14304a; border-bottom:1px solid #e2e5e9; padding-bottom:8px;">
+    Can PDFs that aren&rsquo;t images be extracted with a PDF reader?
+  </h2>
+
+  <p style="margin:0 0 14px;">
+    Yes. If the PDF isn&rsquo;t scanned and contains an embedded text layer, you generally
+    <em>should</em> extract the text directly rather than OCR it. There are three situations:
+  </p>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; margin:0 0 14px; font-size:14.5px;">
+    <tr>
+      <td style="padding:11px 14px; border:1px solid #e2e5e9; background-color:#fafbfc; vertical-align:top; width:130px;"><strong>Born-digital</strong></td>
+      <td style="padding:11px 14px; border:1px solid #e2e5e9; vertical-align:top;">
+        Created from Word, a CLM system, etc. Text is embedded. PyMuPDF, pdfplumber, or pypdf can
+        extract it directly &mdash; no OCR errors, and much faster.
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:11px 14px; border:1px solid #e2e5e9; background-color:#fafbfc; vertical-align:top;"><strong>Scanned / image</strong></td>
+      <td style="padding:11px 14px; border:1px solid #e2e5e9; vertical-align:top;">
+        Each page is essentially a photograph. A normal PDF parser won&rsquo;t recover the words,
+        so OCR (e.g. Textract) is required.
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:11px 14px; border:1px solid #e2e5e9; background-color:#fafbfc; vertical-align:top;"><strong>Hybrid</strong></td>
+      <td style="padding:11px 14px; border:1px solid #e2e5e9; vertical-align:top;">
+        Some pages have real text, others are images. The pipeline should detect this page-by-page
+        and OCR only what needs it.
+      </td>
+    </tr>
+  </table>
+
+  <p style="margin:0 0 14px;">So I&rsquo;d design the ingestion path like this:</p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">PDF &rarr; detect usable text layer
+    &rarr; direct PDF extraction when available
+    &rarr; OCR fallback when needed
+    &rarr; layout/hierarchy reconstruction
+    &rarr; clause extraction</pre>
+
+  <p style="margin:0 0 14px;">
+    <strong>One caveat:</strong> even with a born-digital PDF, plain text extraction
+    doesn&rsquo;t automatically solve the hierarchy problem. You might get:
+  </p>
+  <pre style="margin:0 0 14px; padding:14px 16px; background-color:#f5f6f8; border:1px solid #e2e5e9; border-radius:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.6; color:#24292f; overflow-x:auto; white-space:pre;">2. Indemnification (a) Seller&hellip; (i) &hellip;</pre>
+  <p style="margin:0 0 14px;">
+    &hellip;while losing indentation, font size, coordinates, and reading order. So favor a PDF
+    extraction library that <strong>preserves bounding boxes and layout</strong>, not one that
+    returns a single giant string. For Python, <strong>PyMuPDF (fitz)</strong> is high on my list
+    &mdash; it gives words/blocks with coordinates, which is exactly what you need to reconstruct
+    Section 2 &rarr; (a) &rarr; (i).
+  </p>
+  <p style="margin:0 0 14px;">
+    Bottom line: don&rsquo;t send every PDF through Textract. First determine whether you can
+    reliably extract native text and layout; <strong>Textract becomes the fallback</strong> for
+    the pages where you can&rsquo;t.
+  </p>
+
+  <!-- ── Next step ────────────────────────────────────────── -->
+  <div style="background-color:#f4f8fc; border-left:4px solid #1f4e79; padding:16px 20px; margin:32px 0 0;">
+    <p style="margin:0 0 8px; font-size:13px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#1f4e79;">
+      Possible next step
+    </p>
+    <p style="margin:0;">
+      The natural follow-on is the actual algorithm and Python/TypeScript implementation for
+      turning extracted output into <strong>Section 2 &rarr; (a) &rarr; (i) &rarr; (A)</strong>
+      correctly &mdash; including page breaks and malformed OCR numbering. That is the interesting
+      part of this problem.
+    </p>
+  </div>
+
+  <p style="margin:36px 0 0; padding-top:16px; border-top:1px solid #e2e5e9; font-size:13px; color:#8a939d;">
+    Notes compiled from a working discussion on contract clause extraction.
+  </p>
+
+</div>
+
+</body>
+</html>
